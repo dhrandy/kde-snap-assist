@@ -362,6 +362,24 @@ function addListenersToClient(client) {
     });
 }
 
+/// Windows 11 snap layouts, mirroring the KZones layoutsJson (zone rects in
+/// screen percentages: x, y, width, height). KZones sets window.zone and
+/// window.layout when it places a window, and those properties ARE visible
+/// to this script (verified Nov 18, 2026 via journal: a KZones-placed window
+/// read back zone=0 layout=4). So when KZones placed the window we can offer
+/// exactly the remaining zones of the chosen layout instead of guessing from
+/// geometry, which is ambiguous for the L-shape layouts (a half window looks
+/// like plain Halves). Layout order matches KZones: 0 Halves, 1 Wide Left,
+/// 2 Thirds, 3 Quadrants, 4 Left Half + Split, 5 Right Half + Split.
+const WIN11_LAYOUTS = [
+    [{x:0, y:0, w:50, h:100}, {x:50, y:0, w:50, h:100}],
+    [{x:0, y:0, w:66.67, h:100}, {x:66.67, y:0, w:33.33, h:100}],
+    [{x:0, y:0, w:33.33, h:100}, {x:33.33, y:0, w:33.34, h:100}, {x:66.67, y:0, w:33.33, h:100}],
+    [{x:0, y:0, w:50, h:50}, {x:50, y:0, w:50, h:50}, {x:0, y:50, w:50, h:50}, {x:50, y:50, w:50, h:50}],
+    [{x:0, y:0, w:50, h:100}, {x:50, y:0, w:50, h:50}, {x:50, y:50, w:50, h:50}],
+    [{x:0, y:0, w:50, h:50}, {x:0, y:50, w:50, h:50}, {x:50, y:0, w:50, h:100}]
+];
+
 function onWindowResize(window) {
     if (activated || !window || window.deleted || window.specialWindow) return;
     finishSnap(false); /// make sure we cleared all variables
@@ -375,6 +393,50 @@ function onWindowResize(window) {
     const dx = window.x, dy = window.y;
     const width = window.width, height = window.height;
     const halfScreenWidth = currentScreenWidth / 2, halfScreenHeight = currentScreenHeight / 2;
+
+    /// Layout-aware picker (KZones placed this window): offer exactly the
+    /// remaining zones of the chosen layout. This is what makes the L-shape
+    /// layouts (4, 5) offer the two stacked quarters instead of the whole
+    /// other half. Falls through to the geometric detection below when KZones
+    /// did not place the window (zone -1 / undefined, e.g. a native snap).
+    const kzLayout = window.layout;
+    const kzZone = window.zone;
+    if (typeof kzLayout === "number" && typeof kzZone === "number" && kzLayout >= 0 && kzLayout < WIN11_LAYOUTS.length && kzZone >= 0 && kzZone < WIN11_LAYOUTS[kzLayout].length) {
+        const zones = WIN11_LAYOUTS[kzLayout];
+        const snapped = zones[kzZone];
+        // only trust zone/layout if the window is actually in that zone;
+        // during a drag they can be stale (KZones matchZone runs at drag-end)
+        const expDx = minDx + (snapped.x / 100) * currentScreenWidth;
+        const expDy = minDy + (snapped.y / 100) * currentScreenHeight;
+        const expW = (snapped.w / 100) * currentScreenWidth;
+        const expH = (snapped.h / 100) * currentScreenHeight;
+        if (isEqual(dx, expDx) && isEqual(dy, expDy) && isEqual(width, expW) && isEqual(height, expH)) {
+            quatersToShowNext = {};
+            let remaining = 0;
+            for (let i = 0; i < zones.length; i++) {
+                if (i === kzZone) continue;
+                const z = zones[i];
+                quatersToShowNext[remaining++] = {
+                    dx: minDx + (z.x / 100) * currentScreenWidth,
+                    dy: minDy + (z.y / 100) * currentScreenHeight,
+                    width: (z.w / 100) * currentScreenWidth,
+                    height: (z.h / 100) * currentScreenHeight
+                };
+            }
+            if (remaining === 0) return;
+            layoutMode = quatersToShowNext[0].width <= currentScreenWidth / 3 + snapDetectPrecision ? 3 : 1;
+            columnsCount = layoutMode === 3 ? 1 : 2;
+            filteredClients.push(window);
+            checkToShowNextQuaterAssist(window);
+            /// if only one window available, show it in center and bigger
+            if (clients && clients.length == 1) {
+                columnsCount = 1;
+                cardWidth *= 1.2;
+                cardHeight *= 1.2;
+            }
+            return;
+        }
+    }
 
     /// Detect if window was snapped
     /// left/right halves
