@@ -464,6 +464,18 @@ function onWindowResize(window) {
             layoutMode = 3;
             columnsCount = 1;
         }
+        else if (isEqual(width, thirdOfScreenWidth * 2)) {
+            /// 2/3-wide window (Windows 11 "Wide" layout via KZones);
+            /// offer the remaining 1/3 zone for the next window
+            if (isEqual(dx, minDx)) {
+                delayedShowAssist(minDx + thirdOfScreenWidth * 2, minDy, undefined, undefined, window);
+            } else if (isEqual(dx, minDx + thirdOfScreenWidth)) {
+                delayedShowAssist(minDx, minDy, undefined, undefined, window);
+            }
+            columnsCount = 1;
+            layoutMode = 3;
+            filteredClients.push(window);
+        }
     }
 
     /// if only one window available, show it in center and bigger
