@@ -43,7 +43,11 @@ function showAssist(dx, dy, height, width) {
     mainWindow.x = dx;
     mainWindow.y = dy;
     fadeInAnimation.restart();
-    scrollView.ScrollBar.vertical.position = 0;
+    // NOTE (Plasma 6): ScrollBar.vertical only exists once Qt has created a
+    // vertical scrollbar for this ScrollView; without one the attached
+    // property is undefined and this threw on every snap. Guard it.
+    if (scrollView.ScrollBar && scrollView.ScrollBar.vertical)
+        scrollView.ScrollBar.vertical.position = 0;
 }
 
 function preventAssistFromShowing(delay, callback){
