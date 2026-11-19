@@ -6,10 +6,9 @@
 /// - create task switcher widget which will visually show windows tiled using this assist, allowing to minimize/restore them at once
 
 import QtQuick
-import QtQuick.Window
+import QtQuick.Window as QQWindow
 import QtQuick.Controls
-import org.kde.kwin 3.0 as KWinComponents
-import org.kde.plasma.core as PlasmaCore
+import org.kde.kwin as KWinComponents
 import QtQml.Models
 import org.kde.plasma.components as PlasmaComponents
 import org.kde.kirigami as Kirigami
@@ -19,7 +18,10 @@ import "../code/assist.js" as AssistManager
 import "../code/keyboard.js" as KeyboardManager
 import "../code/windows.js" as WindowManager
 
-Window {
+// NOTE (Plasma 6): org.kde.kwin exports an uncreatable Window type since KWin 6.8,
+// so QtQuick.Window is imported under a qualifier (QQWindow) to keep the
+// popup window resolving to QtQuick's Window.
+QQWindow.Window {
     id: mainWindow
     flags: Qt.FramelessWindowHint | Qt.X11BypassWindowManagerHint | Qt.WindowStaysOnTopHint | Qt.Popup
     visible: true
@@ -101,23 +103,20 @@ Window {
             /// Fix for assist getting shown when screen size changed
             AssistManager.preventAssistFromShowing(1000, () => AssistManager.hideAssist(false));
         }
-        /// TODO: Maybe doesn't work in Plasma 6 and needs replacement
-        function onWindowFullScreenChanged(client, isFullScreen, isUser) {
-            /// we likely don't want assist to be shown when user exited fullscreen mode
-            if (isFullScreen == false) AssistManager.preventAssistFromShowing();
-        }
+        // NOTE (Plasma 6): Workspace has no onWindowFullScreenChanged signal.
+        // Fullscreen handling moved to a per-window fullScreenChanged
+        // connection in windows.js addListenersToClient().
     }
 
-    /// Doesn't work for some reason :(
-    /// hence the recommendation to re-enable the script on configs page
-    Connections {
-        target: KWinComponents.Options
-        function onConfigChanged() { loadConfigs(); }
-    }
+    // NOTE (Plasma 6): there is no KWinComponents.Options type in org.kde.kwin
+    // anymore, so the old onConfigChanged reload block was removed. KWin
+    // reloads declarative scripts when its config changes, so loadConfigs()
+    // runs again on reconfigure; the settings page still asks to re-enable
+    // the script after changing settings.
 
     Component.onCompleted: {
         loadConfigs();
-        const windows = Workspace.clientList();
+        const windows = Workspace.windows;
         for (let i = 0; i < windows.length; ++i) {
             WindowManager.addListenersToClient(windows[i]);
         }
@@ -200,7 +199,7 @@ Window {
 
                                     Kirigami.Icon {
                                         id: icon
-                                        height: 12 // PlasmaCore.Units.iconSizes.medium?
+                                        height: 12
                                         width: 12
                                         source: modelData.icon
                                     }
@@ -215,10 +214,14 @@ Window {
                                 }
 
                                 /// window thumbnail
+                                // NOTE (Plasma 6): WindowThumbnail.client takes a Window
+                                // object, not an id. wId takes the window's internalId
+                                // (QUuid) and looks the window up, same as the Plasma 5
+                                // ThumbnailItem this replaces.
                                 KWinComponents.WindowThumbnail {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     id: clientThumbnail
-                                    client: modelData.internalId
+                                    wId: modelData.internalId
                                     clip: true
                                     visible: mainWindow.activated
                                     width: cardWidth - 6
