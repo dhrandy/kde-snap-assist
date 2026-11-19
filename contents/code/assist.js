@@ -1,6 +1,8 @@
 /// assist
 function delayedShowAssist(dx, dy, height, width, window){
-    const allClients = Object.values(Workspace.clientList());
+    // NOTE (Plasma 6): Workspace.clientList() is gone; Workspace.windows
+    // is the declarative list property (exposed as a JS array).
+    const allClients = Workspace.windows;
     clients = allClients.filter(c => WindowManager.shouldShowWindow(c));
     if (clients.length == 0) return;
 
@@ -21,7 +23,9 @@ function delayedShowAssist(dx, dy, height, width, window){
 
     /// find current desktop background
     if (showDesktopBackground) {
-        const indexOfDesktopWindow = allClients.findIndex((c) => c.desktopWindow && c.screen === Workspace.activeScreen);
+        // NOTE (Plasma 6): Window.screen (int) is gone; output is the
+        // LogicalOutput*, same type as Workspace.activeScreen.
+        const indexOfDesktopWindow = allClients.findIndex((c) => c.desktopWindow && c.output === Workspace.activeScreen);
         if (indexOfDesktopWindow < 0) return;
         desktopWindowId = allClients[indexOfDesktopWindow].internalId;
     }
