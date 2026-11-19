@@ -1,7 +1,7 @@
-import QtQuick 2.12
-import QtQuick.Window 2.12
-import QtGraphicalEffects 1.12
-import org.kde.kwin 2.0 as KWinComponents
+import QtQuick
+import QtQuick.Window
+import QtQuick.Effects
+import org.kde.kwin as KWinComponents
 
 Item {
     y: - (mainWindow.y - minDy)
@@ -10,19 +10,25 @@ Item {
     width: currentScreenWidth
     visible: showDesktopBackground && mainWindow.activated
 
-    KWinComponents.ThumbnailItem {
+    // NOTE (Plasma 6): WindowThumbnail.client takes a Window object, not
+    // an id. wId takes the desktop window's internalId (QUuid) and looks
+    // the window up, same as the Plasma 5 ThumbnailItem this replaces.
+    KWinComponents.WindowThumbnail {
         wId: desktopWindowId
         id: desktopBackground
         anchors.fill: parent
     }
 
     /// configurable blur
-    FastBlur {
+    // NOTE (Plasma 6): FastBlur from Qt5Compat.QtGraphicalEffects is gone;
+    // MultiEffect from QtQuick.Effects is the Qt 6 replacement. Its blur
+    // is normalized 0..1, so the 0..60 px config value is scaled to fit.
+    MultiEffect {
         id: blurBackground
         anchors.fill: parent
         source: desktopBackground
-        radius: desktopBackgroundBlur
-        cached: false
+        blurEnabled: true
+        blur: Math.min(desktopBackgroundBlur / 60, 1)
         visible: desktopBackgroundBlur > 0
     }
 }
