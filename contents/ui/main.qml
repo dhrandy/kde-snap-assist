@@ -5,22 +5,24 @@
 /// - restore previous size on un-snapping of programatically snapped window
 /// - create task switcher widget which will visually show windows tiled using this assist, allowing to minimize/restore them at once
 
-import QtQuick 2.12
-import QtQuick.Window 2.12
-import QtQuick.Controls 2.12
-import org.kde.kwin 2.0 as KWinComponents
-import org.kde.plasma.core 2.0 as PlasmaCore
-import QtQml.Models 2.2
-import org.kde.plasma.components 3.0 as PlasmaComponents
+import QtQuick
+import QtQuick.Window as QQWindow
+import QtQuick.Controls
+import org.kde.kwin as KWinComponents
+import QtQml.Models
+import org.kde.plasma.components as PlasmaComponents
+import org.kde.kirigami as Kirigami
 
 import "components"
-import "./code/assist.js" as AssistManager
-import "./code/keyboard.js" as KeyboardManager
-import "./code/windows.js" as WindowManager
+import "../code/snapassist.js" as Script
+import "../code/keyboard.js" as KeyboardManager
 
-Window {
+// NOTE (Plasma 6): org.kde.kwin exports an uncreatable Window type since KWin 6.8,
+// so QtQuick.Window is imported under a qualifier (QQWindow) to keep the
+// popup window resolving to QtQuick's Window.
+QQWindow.Window {
     id: mainWindow
-    flags: Qt.FramelessWindowHint | Qt.X11BypassWindowManagerHint
+    flags: Qt.FramelessWindowHint | Qt.X11BypassWindowManagerHint | Qt.WindowStaysOnTopHint | Qt.Popup
     visible: true
     color: "transparent"
     x: mainWindow.width * 2
@@ -88,36 +90,34 @@ Window {
     property int desktopBackgroundBlur
 
     Connections {
-        target: workspace
-        function onClientActivated(window) {
+        target: KWinComponents.Workspace
+        function onWindowActivated(window) {
             if (!window) return;
-            WindowManager.handleWindowFocus(window);
+            Script.handleWindowFocus(window);
         }
-        function onClientAdded(window) {
-            WindowManager.addListenersToClient(window);
-        }
-        function onClientFullScreenSet(client, isFullScreen, isUser) {
-            /// we likely don't want assist to be shown when user exited fullscreen mode
-            if (isFullScreen == false) AssistManager.preventAssistFromShowing();
+        function onWindowAdded(window) {
+            Script.addListenersToClient(window);
         }
         function onVirtualScreenSizeChanged(){
             /// Fix for assist getting shown when screen size changed
-            AssistManager.preventAssistFromShowing(1000, () => AssistManager.hideAssist(false));
+            Script.preventAssistFromShowing(1000, () => Script.hideAssist(false));
         }
+        // NOTE (Plasma 6): Workspace has no onWindowFullScreenChanged signal.
+        // Fullscreen handling moved to a per-window fullScreenChanged
+        // connection in windows.js addListenersToClient().
     }
 
-    /// Doesn't work for some reason :(
-    /// hence the recommendation to re-enable the script on configs page
-    Connections {
-        target: options
-        function onConfigChanged() { loadConfigs(); }
-    }
+    // NOTE (Plasma 6): there is no KWinComponents.Options type in org.kde.kwin
+    // anymore, so the old onConfigChanged reload block was removed. KWin
+    // reloads declarative scripts when its config changes, so loadConfigs()
+    // runs again on reconfigure; the settings page still asks to re-enable
+    // the script after changing settings.
 
     Component.onCompleted: {
         loadConfigs();
-        const windows = workspace.clients;
+        const windows = Object.values(KWinComponents.Workspace.windows);
         for (let i = 0; i < windows.length; ++i) {
-            WindowManager.addListenersToClient(windows[i]);
+            Script.addListenersToClient(windows[i]);
         }
 
         mainWindow.hide();
@@ -146,7 +146,7 @@ Window {
         /// click on empty space to close
         MouseArea {
             anchors.fill: parent
-            onClicked: {  if (activated) AssistManager.hideAssist(true); }
+            onClicked: {  if (activated) Script.hideAssist(true); }
         }
 
         ScrollView {
@@ -196,9 +196,9 @@ Window {
                                         color: "transparent"
                                     }
 
-                                    PlasmaCore.IconItem {
+                                    Kirigami.Icon {
                                         id: icon
-                                        height: 12 // PlasmaCore.Units.iconSizes.medium?
+                                        height: 12
                                         width: 12
                                         source: modelData.icon
                                     }
@@ -213,7 +213,11 @@ Window {
                                 }
 
                                 /// window thumbnail
-                                KWinComponents.ThumbnailItem {
+                                // NOTE (Plasma 6): WindowThumbnail.client takes a Window
+                                // object, not an id. wId takes the window's internalId
+                                // (QUuid) and looks the window up, same as the Plasma 5
+                                // ThumbnailItem this replaces.
+                                KWinComponents.WindowThumbnail {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     id: clientThumbnail
                                     wId: modelData.internalId
@@ -235,7 +239,7 @@ Window {
                                     clientItem.color = cardColor;
                                 }
                                 onClicked: {
-                                    WindowManager.selectClient(modelData);
+                                    Script.selectClient(modelData);
                                 }
                             }
                         }
@@ -250,7 +254,7 @@ Window {
         y: 20
         icon.name: "window-close"
         ToolTip.text: qsTr("Close snap assist")
-        onClicked: AssistManager.hideAssist(true);
+        onClicked: Script.hideAssist(true);
     }
 
     /// Change layout button
@@ -276,7 +280,7 @@ Window {
         }
 
         ToolTip.text: qsTr("Change layout")
-        onClicked: AssistManager.switchAssistLayout();
+        onClicked: Script.switchAssistLayout();
     }
 
     /// Timer to delay snap assist reveal.
@@ -311,7 +315,7 @@ Window {
 
                switch (event.key) {
                 case Qt.Key_Escape:
-                    AssistManager.hideAssist(true);
+                    Script.hideAssist(true);
                     break;
                 case Qt.Key_Left:
                     KeyboardManager.moveFocusLeft();
@@ -326,10 +330,10 @@ Window {
                     KeyboardManager.moveFocusDown();
                     break;
                 case Qt.Key_Return:
-                    WindowManager.selectClient(clients[focusedIndex]);
+                    Script.selectClient(clients[focusedIndex]);
                     break;
                 case Qt.Key_Tab:
-                    AssistManager.switchAssistLayout();
+                    Script.switchAssistLayout();
                     break;
                 }
         }
