@@ -1,6 +1,7 @@
 function selectClient(client){
     client.setMaximize(false, false);
-    client.shade = false;
+    // NOTE (Plasma 6): Window has no shade property anymore (roll-up/shade
+    // was removed from KWin), so the old `client.shade = false` is gone.
 
     if (rememberWindowSizes)
         windowSizesBeforeSnap[client.internalId] = { height: client.height, width: client.width };
@@ -38,37 +39,51 @@ function addListenersToClient(client) {
         }
     });
 
-    client.windowStartUserMovedResized.connect(function(cl){
+    // NOTE (Plasma 6): windowStartUserMovedResized is gone; the replacement
+    // is interactiveMoveResizeStarted(), which passes no arguments, so the
+    // closure's `client` is used instead of the old `cl` parameter.
+    client.interactiveMoveResizeStarted.connect(function(){
         if (trackSnappedWindows && !client.resize)
-            removeWindowFromTrack(cl.internalId, function(group){
-                if (fillOnSnappedMove) fillClosedWindow(cl, group);
+            removeWindowFromTrack(client.internalId, function(group){
+                if (fillOnSnappedMove) fillClosedWindow(client, group);
             });
 
         if (rememberWindowSizes){
-            const storedSize = windowSizesBeforeSnap[cl.internalId];
+            const storedSize = windowSizesBeforeSnap[client.internalId];
             if (storedSize) {
-                cl.frameGeometry.height = windowSizesBeforeSnap[cl.internalId].height ?? cl.height;
-                cl.frameGeometry.width = windowSizesBeforeSnap[cl.internalId].width ?? cl.width;
-                delete windowSizesBeforeSnap[cl.internalId];
+                // NOTE: assigning to frameGeometry.height/.width directly
+                // is a no-op (frameGeometry is a value type, the getter
+                // returns a copy), so assign a whole new rect instead.
+                client.frameGeometry = Qt.rect(
+                    client.frameGeometry.x,
+                    client.frameGeometry.y,
+                    storedSize.width ?? client.width,
+                    storedSize.height ?? client.height
+                );
+                delete windowSizesBeforeSnap[client.internalId];
             }
         }
     });
 
-    client.windowClosed.connect(function(window){
+    // NOTE (Plasma 6): windowClosed is gone; Window.closed() fires from
+    // destroyWindow() while the geometry is still readable.
+    client.closed.connect(function(){
         handleWindowClose(client);
     });
 
-    client.desktopChanged.connect(function(){
+    // NOTE (Plasma 6): desktopChanged is gone; desktopsChanged covers it
+    // (Window.desktops is now a list of VirtualDesktop objects).
+    client.desktopsChanged.connect(function(){
         if (trackSnappedWindows && !client.resize) removeWindowFromTrack(client.internalId);
     });
 
-    client.windowMinimized.connect(function(c){
-            if (!trackSnappedWindows || !minimizeSnappedTogether) return;
+    // NOTE (Plasma 6): windowMinimized/windowUnminimized are gone; both are
+    // covered by minimizedChanged, branching on client.minimized.
+    client.minimizedChanged.connect(function(){
+        if (!trackSnappedWindows || !minimizeSnappedTogether) return;
+        if (client.minimized) {
             WindowManager.applyActionToAssosiatedSnapGroup(client, function(cl){ if (cl) cl.minimized = true; });
-    });
-
-    client.windowUnminimized.connect(function(c){
-            if (!trackSnappedWindows || !minimizeSnappedTogether) return;
+        } else {
             WindowManager.applyActionToAssosiatedSnapGroup(client, function(cl) {
                 if (cl) {
                     cl.minimized = false;
@@ -78,6 +93,14 @@ function addListenersToClient(client) {
                     }
                 }
             });
+        }
+    });
+
+    // NOTE (Plasma 6): Workspace has no onWindowFullScreenChanged signal.
+    // Per-window fullScreenChanged replaces it: when the user exits
+    // fullscreen we don't want the assist to pop up.
+    client.fullScreenChanged.connect(function(){
+        if (!client.fullScreen) AssistManager.preventAssistFromShowing();
     });
 }
 
@@ -161,7 +184,7 @@ function onWindowResize(window) {
             quatersToShowNext = {
                 0: { dx: minDx, dy:  minDy, height: currentScreenHeight, width: thirdOfScreenWidth, },
                 1: { dx: minDx + thirdOfScreenWidth, dy:  minDy, height: currentScreenHeight, width: thirdOfScreenWidth, },
-                2: { dx: minDx + (thirdOfScreenWidth * 2), dy: minDy, height: currentScreenHeight, width: thirdOfScreenWidth, },
+                2: { dx: minDx + (thirdOfScreenWidth * 2), dy:  minDy, height: currentScreenHeight, width: thirdOfScreenWidth, },
             };
 
             /// detect which quater snapped window takes
@@ -314,7 +337,11 @@ function windowFitsInSnapGroup(client){
     Object.keys(activationTime).forEach(function(key) {
         if(activationTime[key] > lastActiveTime && key != client.internalId && key != activeClientId) {
             const c = getClientFromId(key);
-            if (c && !c.minimized && c.screen == Workspace.activeScreen && c.desktop == Workspace.currentDesktop) {
+            // NOTE (Plasma 6): Window.screen (int) and Window.desktop (int)
+            // are gone. Use output (LogicalOutput*) and desktops (list of
+            // VirtualDesktop objects); Workspace.activeScreen is now a
+            // LogicalOutput* and Workspace.currentDesktop a VirtualDesktop.
+            if (c && !c.minimized && c.output === Workspace.activeScreen && c.desktops.indexOf(Workspace.currentDesktop) > -1) {
                 lastActiveWindowId = c.internalId;
                 lastActiveTime = activationTime[key];
             }
@@ -370,15 +397,19 @@ function isEqual(a, b) {
 function getClientFromId(windowId){
     //return workspace.getClient(windowId);
     /// Works on Wayland
-    return Object.values(Workspace.clientList()).find((el) => el.internalId == windowId);
+    // NOTE (Plasma 6): Workspace.clientList() is gone; Workspace.windows
+    // is the declarative list property (exposed as a JS array).
+    return Workspace.windows.find((el) => el.internalId == windowId);
 }
 
 function shouldShowWindow(client) {
     if (filteredClients.includes(client)) return false;
     if (client.active || client.specialWindow) return false;
     if (!showMinimizedWindows && client.minimized) return false;
-    if (!showOtherScreensWindows && client.screen !== Workspace.activeScreen) return false;
-    if (!showOtherDesktopsWindows && client.desktop !== Workspace.currentDesktop) return false;
+    // NOTE (Plasma 6): client.screen (int) and client.desktop (int) are
+    // gone; see windowFitsInSnapGroup for the replacements.
+    if (!showOtherScreensWindows && client.output !== Workspace.activeScreen) return false;
+    if (!showOtherDesktopsWindows && client.desktops.indexOf(Workspace.currentDesktop) === -1) return false;
     if (!showSnappedWindows && snappedWindowGroups.findIndex(group => group.windows.includes(client.internalId) && group.windows.length > 1) > -1) return false;
     if (client.activities.length > 0 && !client.activities.includes(Workspace.currentActivity)) return false;
     return true;
