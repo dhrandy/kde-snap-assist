@@ -31,6 +31,17 @@ Do not use "Get New Scripts" in System Settings for this one: that installs the 
 
 **Upgrading:** install the new version over the old one (same steps as above), then reload KWin. On Wayland, use `kwin_wayland --replace`; do not restart KWin with `systemctl restart plasma-kwin_wayland.service`, it can drop your session to the lock screen.
 
+## Use with KZones (Windows 11 layouts)
+
+For the full Windows 11 experience, use this script together with [KZones](https://github.com/gerritdevriese/kzones). Both need to be enabled in System Settings > Window Management > KWin Scripts. They do different jobs:
+
+- **KZones** is the layout bar: drag a window to the top of the screen, pick a layout and a zone, and it puts the window there. It provides the Windows 11 layouts (halves, thirds, quadrants, wide left/right, and the L-shapes).
+- **KDE Snap Assist (this script)** is the picker: after a window snaps in, it shows your other open windows so you can click one to fill the next zone.
+
+If only KZones is on, you can snap windows into zones but there is no picker for the remaining windows, you have to drag each one by hand. If only Snap Assist is on, you get the picker on native edge snaps but no layout bar and no custom layouts.
+
+This fork is layout-aware: when KZones places a window, this script reads the layout and zone KZones used and offers exactly the remaining zones of that layout. That is what makes the L-shape layouts (half on one side, split top/bottom on the other) offer the two stacked quarters instead of the whole other half. It also recognises 2/3-wide zones (Wide Left / Wide Right). If a window was not placed by KZones, it falls back to detecting halves, quarters, and thirds from the window geometry.
+
 ## Snap Groups
 
 Since version `1.4`, there are also experimental *snap group* features:
