@@ -1,3 +1,11 @@
+2.0.0
+- Plasma 6 port (tested on Plasma 6.8): the script now runs on Plasma 6; the original only worked on Plasma 5
+- Live window thumbnails in the picker, using WindowThumbnail (Plasma 6) instead of the removed ThumbnailItem
+- assist.js and windows.js merged into a single snapassist.js, because in Plasma 6 / Qt 6 each .js file is a proper module and cross-file references no longer resolve
+- Layout-aware remaining-windows picker: when a window is placed by KZones, the picker reads the layout and zone KZones used and offers exactly the remaining zones of that layout, so L-shape layouts (half on one side, split top/bottom on the other) offer the two stacked quarters instead of the whole other half; also recognises 2/3-wide zones (Wide Left / Wide Right); windows not placed by KZones fall back to detecting halves, quarters, and thirds from the window geometry
+- Blurred desktop background re-implemented for Qt 6 (MultiEffect), replacing the Qt5Compat FastBlur
+- README: added Installation (Plasma 6) and "Use with KZones (Windows 11 layouts)" sections; the script is meant to be used together with KZones for the full Windows 11 flow (KZones is the layout bar, this script is the picker); when using KZones, set "Snap detect tolerance" to 15px in the script settings
+
 1.6.2
 - New feature "Show desktop background" and associated blur option
 - Improved stability and performance by not attaching listeners to special windows (alerts, notifications, etc)
